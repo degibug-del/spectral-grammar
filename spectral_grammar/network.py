@@ -185,8 +185,9 @@ class SpectralGrammarNetwork(nn.Module):
                 # Fallback: use Frobenius norm as proxy
                 delta_lambda = torch.norm(A[i], p='fro') / A[i].shape[0]
 
-            # Clamp to avoid extreme values
-            delta_lambda = torch.clamp(delta_lambda, 0.01, 2.0)
+            # Softer clamp: allow wider range with smoother boundaries
+            # Use tanh to prevent hard saturation
+            delta_lambda = torch.tanh(delta_lambda) + 0.5  # Range: [0.2, 1.5]
             delta_lambdas.append(delta_lambda)
 
         return torch.stack(delta_lambdas)
@@ -231,23 +232,22 @@ class SpectralGrammarNetwork(nn.Module):
 
 class SpectralGrammarLoss(nn.Module):
     """
-    Custom loss combining prediction loss with spectral weighting.
+    Custom loss combining prediction + spectral weighting.
 
-    Key idea: Ambiguous sentences (low Δλ) are harder to predict,
-    so weight them higher during training.
+    Key idea: Balance prediction accuracy with spectral diversity.
+    Don't aggressively maximize Δλ; instead focus on accurate predictions.
     """
 
-    def __init__(self, alpha: float = 0.2, beta: float = 0.1):
+    def __init__(self, alpha: float = 0.15, beta: float = 0.01):
         """
         Args:
             alpha: Weight for spectral weighting (0-1)
-            beta: Weight for spectral regularization (0-1)
+            beta: Weight for spectral regularization (very small, 0-0.1)
         """
         super().__init__()
         self.alpha = alpha
-        self.beta = beta
+        self.beta = beta  # Much smaller now
         self.ce_loss = nn.CrossEntropyLoss(reduction='none')
-        self.base_ce_loss = nn.CrossEntropyLoss()
 
     def forward(
         self,
@@ -256,7 +256,7 @@ class SpectralGrammarLoss(nn.Module):
         delta_lambda: torch.Tensor
     ) -> torch.Tensor:
         """
-        Loss function with spectral gap weighting.
+        Loss function with soft spectral guidance.
 
         Args:
             logits: [batch, seq_len, vocab_size]
@@ -268,27 +268,29 @@ class SpectralGrammarLoss(nn.Module):
         """
         batch_size, seq_len, vocab_size = logits.shape
 
-        # Prediction loss with per-sample weighting
+        # Main loss: prediction accuracy
         pred_loss_per_sample = self.ce_loss(
             logits.view(-1, vocab_size),
             targets.view(-1)
         ).view(batch_size, seq_len)
 
-        # Weight by inverse spectral gap (ambiguous → higher weight)
-        # Low Δλ = ambiguous = high weight
-        spectral_weights = 1.0 / (0.1 + delta_lambda).unsqueeze(1)
-        spectral_weights = spectral_weights / spectral_weights.mean()  # Normalize
+        # Soft spectral weighting (don't over-emphasize)
+        # All sentences get similar loss, with slight boost for hard cases
+        spectral_weights = 1.0 / (0.5 + delta_lambda).unsqueeze(1)
+        spectral_weights = spectral_weights / spectral_weights.mean()
 
-        # Apply weighting
+        # Apply gentle weighting
         weighted_pred_loss = (
             (1 - self.alpha) * pred_loss_per_sample +
             self.alpha * pred_loss_per_sample * spectral_weights
         ).mean()
 
-        # Spectral regularization: encourage high Δλ for clarity
-        spectral_reg = -torch.mean(delta_lambda)
+        # Minimal spectral regularization: just gentle guidance
+        # Target mid-range spectral gaps (not maximum)
+        spectral_target = 0.8  # Target Δλ ≈ 0.8 (middle of range)
+        spectral_reg = torch.abs(torch.mean(delta_lambda) - spectral_target)
 
-        # Combined loss
+        # Combined loss (spectral component is minimal)
         loss = (1 - self.beta) * weighted_pred_loss + self.beta * spectral_reg
 
         return loss
