@@ -103,7 +103,7 @@ Response:
 ```json
 {
   "user_id": "550e8400-e29b-41d4-a716-446655440000",
-  "api_key": "YOUR-API-KEY-HERE",
+  "api_key": "your-api-key-here-do-not-share",
   "tier": "pro",
   "limits": {"requests_per_month": 10000}
 }
@@ -114,7 +114,7 @@ Response:
 curl -X POST http://localhost:8000/analyze \
   -d '{"text": "The cat sat on the mat"}' \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: YOUR-API-KEY-HERE"
+  -H "X-API-Key: your-api-key-here-do-not-share"
 ```
 
 **Revenue model**: Each paying customer = $50-100/month. Target: 10-20 customers = $500-2000/month.
