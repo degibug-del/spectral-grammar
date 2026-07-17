@@ -1,0 +1,98 @@
+[
+  {
+    "config": {
+      "epochs": 10,
+      "batch_size": 16,
+      "learning_rate": 0.002,
+      "dropout": 0.2,
+      "num_attention_heads": 4,
+      "num_layers": 2,
+      "embedding_dim": 128,
+      "hidden_dim": 256,
+      "name": "Baseline (previous best)"
+    },
+    "final_train_loss": -0.19465306353184483,
+    "final_val_loss": -0.1922310534864664,
+    "params": 877809
+  },
+  {
+    "config": {
+      "epochs": 10,
+      "batch_size": 16,
+      "learning_rate": 0.001,
+      "dropout": 0.2,
+      "num_attention_heads": 4,
+      "num_layers": 2,
+      "embedding_dim": 128,
+      "hidden_dim": 256,
+      "name": "Lower LR (0.001)"
+    },
+    "final_train_loss": -0.17950073942061393,
+    "final_val_loss": -0.1824548188596964,
+    "params": 877809
+  },
+  {
+    "config": {
+      "epochs": 10,
+      "batch_size": 16,
+      "learning_rate": 0.002,
+      "dropout": 0.3,
+      "num_attention_heads": 4,
+      "num_layers": 2,
+      "embedding_dim": 128,
+      "hidden_dim": 256,
+      "name": "More dropout (0.3)"
+    },
+    "final_train_loss": -0.19403868769445726,
+    "final_val_loss": -0.19173371605575085,
+    "params": 877809
+  },
+  {
+    "config": {
+      "epochs": 10,
+      "batch_size": 16,
+      "learning_rate": 0.001,
+      "dropout": 0.2,
+      "num_attention_heads": 8,
+      "num_layers": 2,
+      "embedding_dim": 128,
+      "hidden_dim": 512,
+      "name": "Larger (hidden=512, heads=8)"
+    },
+    "final_train_loss": -0.19547860564724093,
+    "final_val_loss": -0.1917960774153471,
+    "params": 2712817
+  },
+  {
+    "config": {
+      "epochs": 10,
+      "batch_size": 16,
+      "learning_rate": 0.001,
+      "dropout": 0.2,
+      "num_attention_heads": 4,
+      "num_layers": 3,
+      "embedding_dim": 128,
+      "hidden_dim": 256,
+      "name": "Deeper (3 layers)"
+    },
+    "final_train_loss": -0.13506563536582455,
+    "final_val_loss": -0.151206623762846,
+    "params": 1273073
+  },
+  {
+    "config": {
+      "epochs": 10,
+      "batch_size": 16,
+      "learning_rate": 0.0005,
+      "dropout": 0.1,
+      "num_attention_heads": 2,
+      "num_layers": 1,
+      "embedding_dim": 96,
+      "hidden_dim": 192,
+      "name": "Conservative (small model)"
+    },
+    "final_train_loss": -0.037780382460163485,
+    "final_val_loss": -0.04804231785237789,
+    "params": 288817
+  }
+]
