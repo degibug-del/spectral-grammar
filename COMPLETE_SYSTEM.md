@@ -122,7 +122,7 @@ python bci_app.py --backend muse --duration 30
 # Real Emotiv
 python bci_app.py --backend emotiv \
   --username user@example.com \
-  --password password \
+  --password <password> \
   --duration 30
 ```
 

@@ -12,7 +12,7 @@ This is a paralyzed-patient communication system.
 Usage:
   python bci_app.py --backend simulated --duration 10
   python bci_app.py --backend muse --duration 30
-  python bci_app.py --backend emotiv --username user@example.com --password pwd
+  python bci_app.py --backend emotiv --username user@example.com --password <password>
 """
 
 import argparse
