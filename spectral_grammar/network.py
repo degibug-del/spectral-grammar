@@ -13,13 +13,15 @@ from typing import Tuple, Optional
 
 class SpectralGrammarNetwork(nn.Module):
     """
-    Neural network that learns language via spectral grammar principles.
+    Improved neural network for spectral grammar language modeling.
 
     Architecture:
     1. Embed words
-    2. Learn dependency structure (as adjacency matrix)
-    3. Compute eigenvalues of structure
-    4. Predict next word based on frequency encoding
+    2. Multi-head self-attention (focus on grammar structure)
+    3. Learn dependency structure (as adjacency matrix)
+    4. Compute eigenvalues of structure
+    5. Bidirectional LSTM (forward and backward context)
+    6. Predict next word based on frequency encoding
     """
 
     def __init__(
@@ -28,7 +30,8 @@ class SpectralGrammarNetwork(nn.Module):
         embedding_dim: int = 128,
         hidden_dim: int = 256,
         num_layers: int = 2,
-        dropout: float = 0.1
+        dropout: float = 0.2,
+        num_attention_heads: int = 4
     ):
         """Initialize network."""
         super().__init__()
@@ -39,6 +42,14 @@ class SpectralGrammarNetwork(nn.Module):
 
         # Embeddings
         self.embed = nn.Embedding(vocab_size, embedding_dim)
+
+        # Multi-head self-attention (learn grammar patterns)
+        self.attention = nn.MultiheadAttention(
+            embed_dim=embedding_dim,
+            num_heads=num_attention_heads,
+            dropout=dropout,
+            batch_first=True
+        )
 
         # Learn dependency structure
         self.dependency_net = nn.Sequential(
@@ -58,14 +69,18 @@ class SpectralGrammarNetwork(nn.Module):
             nn.Linear(32, 1)
         )
 
-        # LSTM for sequence modeling
+        # Bidirectional LSTM for sequence modeling
         self.lstm = nn.LSTM(
             embedding_dim,
-            hidden_dim,
+            hidden_dim // 2,  # Bidirectional = 2x hidden
             num_layers=num_layers,
-            dropout=dropout,
-            batch_first=True
+            dropout=dropout if num_layers > 1 else 0,
+            batch_first=True,
+            bidirectional=True
         )
+
+        # Layer norm for stability
+        self.norm = nn.LayerNorm(embedding_dim)
 
         # Output layer
         self.output = nn.Linear(hidden_dim, vocab_size)
@@ -84,7 +99,7 @@ class SpectralGrammarNetwork(nn.Module):
         return_spectral: bool = False
     ) -> Tuple[torch.Tensor, Optional[dict]]:
         """
-        Forward pass.
+        Forward pass with improved architecture.
 
         Args:
             token_ids: [batch_size, seq_len]
@@ -98,6 +113,11 @@ class SpectralGrammarNetwork(nn.Module):
 
         # Embed
         embeddings = self.embed(token_ids)  # [batch, seq_len, embed_dim]
+
+        # Multi-head self-attention (learn grammar patterns)
+        attn_out, _ = self.attention(embeddings, embeddings, embeddings)
+        attn_out = attn_out + embeddings  # Residual connection
+        embeddings = self.norm(attn_out)
 
         # Learn dependency structure
         dep_scores = self.dependency_net(embeddings)  # [batch, seq_len, embed_dim]
@@ -113,11 +133,11 @@ class SpectralGrammarNetwork(nn.Module):
         # Predict frequency from spectral gap
         frequency = self._predict_frequency(delta_lambda)  # [batch]
 
-        # Scale embeddings by predicted frequency (uncertainty weighting)
+        # Scale embeddings by predicted frequency (adaptive weighting)
         freq_weights = frequency.unsqueeze(1).unsqueeze(2) / 10.0  # [batch, 1, 1]
         weighted_embeddings = embeddings * (0.5 + 0.5 * freq_weights.clamp(0, 1))
 
-        # LSTM
+        # Bidirectional LSTM (reads forward and backward)
         lstm_out, _ = self.lstm(weighted_embeddings)  # [batch, seq_len, hidden_dim]
 
         # Predict next token
@@ -210,16 +230,24 @@ class SpectralGrammarNetwork(nn.Module):
 
 
 class SpectralGrammarLoss(nn.Module):
-    """Custom loss combining prediction loss with spectral constraints."""
+    """
+    Custom loss combining prediction loss with spectral weighting.
 
-    def __init__(self, alpha: float = 0.1):
+    Key idea: Ambiguous sentences (low Δλ) are harder to predict,
+    so weight them higher during training.
+    """
+
+    def __init__(self, alpha: float = 0.2, beta: float = 0.1):
         """
         Args:
-            alpha: Weight for spectral regularization (0-1)
+            alpha: Weight for spectral weighting (0-1)
+            beta: Weight for spectral regularization (0-1)
         """
         super().__init__()
         self.alpha = alpha
-        self.ce_loss = nn.CrossEntropyLoss()
+        self.beta = beta
+        self.ce_loss = nn.CrossEntropyLoss(reduction='none')
+        self.base_ce_loss = nn.CrossEntropyLoss()
 
     def forward(
         self,
@@ -228,7 +256,7 @@ class SpectralGrammarLoss(nn.Module):
         delta_lambda: torch.Tensor
     ) -> torch.Tensor:
         """
-        Loss function.
+        Loss function with spectral gap weighting.
 
         Args:
             logits: [batch, seq_len, vocab_size]
@@ -238,17 +266,29 @@ class SpectralGrammarLoss(nn.Module):
         Returns:
             loss: scalar
         """
-        # Prediction loss
         batch_size, seq_len, vocab_size = logits.shape
-        pred_loss = self.ce_loss(
+
+        # Prediction loss with per-sample weighting
+        pred_loss_per_sample = self.ce_loss(
             logits.view(-1, vocab_size),
             targets.view(-1)
-        )
+        ).view(batch_size, seq_len)
+
+        # Weight by inverse spectral gap (ambiguous → higher weight)
+        # Low Δλ = ambiguous = high weight
+        spectral_weights = 1.0 / (0.1 + delta_lambda).unsqueeze(1)
+        spectral_weights = spectral_weights / spectral_weights.mean()  # Normalize
+
+        # Apply weighting
+        weighted_pred_loss = (
+            (1 - self.alpha) * pred_loss_per_sample +
+            self.alpha * pred_loss_per_sample * spectral_weights
+        ).mean()
 
         # Spectral regularization: encourage high Δλ for clarity
-        spectral_reg = -torch.mean(delta_lambda)  # Negative: we want to maximize Δλ
+        spectral_reg = -torch.mean(delta_lambda)
 
         # Combined loss
-        loss = (1 - self.alpha) * pred_loss + self.alpha * spectral_reg
+        loss = (1 - self.beta) * weighted_pred_loss + self.beta * spectral_reg
 
         return loss
