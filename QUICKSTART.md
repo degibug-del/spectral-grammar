@@ -1,150 +1,164 @@
-# Quickstart: Spectral Grammar
+# Quick Start: Deploy in 5 Minutes
 
-Get it running in 5 minutes.
-
-## 1. Install Dependencies
+## Local (Test First)
 
 ```bash
-pip install spacy numpy torch
-python -m spacy download en_core_web_sm
+# 1. Setup
+cp .env.example .env
+# Edit .env - add your Stripe keys (or leave as test keys)
+
+# 2. Run
+docker-compose up --build
+
+# 3. Access
+# Dashboard: http://localhost:8000
+# API: http://localhost:8000/analyze
+# Health: http://localhost:8000/health
+
+# 4. Test
+curl -X POST http://localhost:8000/auth/key \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com", "tier": "free"}'
+
+# Use the returned API key to test the analyze endpoint
 ```
 
-(Takes ~2 minutes)
+---
 
-## 2. Run Basic Analysis
+## Production (AWS EC2)
+
+### 1. Launch Server (3 min)
 
 ```bash
-python examples/basic.py
+# Go to AWS Console → EC2 → Launch Instance
+# Select: Ubuntu 22.04 LTS
+# Instance type: t3.medium (or larger)
+# Security group: Allow ports 80, 443, 22
+# Create and download keypair
 ```
 
-Output: Analysis of 8 test sentences with Δλ, frequency, confidence.
-
-## 3. Try Garden-Path Detection
+### 2. Connect & Install (2 min)
 
 ```bash
-python examples/garden_path.py
+# SSH into server
+ssh -i your-key.pem ubuntu@your-server-ip
+
+# Install Docker
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker ubuntu
+exit
+
+# SSH back in
+ssh -i your-key.pem ubuntu@your-server-ip
 ```
 
-Shows: Ambiguous sentences → lower frequency.
-
-## 4. Start the API
+### 3. Deploy (2 min)
 
 ```bash
-python api.py
+# Clone repo
+git clone https://github.com/degibug-del/spectral-grammar
+cd spectral-grammar
+
+# Setup environment
+cp .env.example .env
+nano .env  # Add Stripe keys
+
+# Make data directory
+mkdir -p data backups
+
+# Start
+docker-compose up -d
+
+# Verify
+curl http://localhost:8000/health
 ```
 
-Server runs on `http://localhost:8000`
-
-## 5. Test the API
-
-In another terminal:
+### 4. Domain & SSL (2 min)
 
 ```bash
+# Get domain pointing to this IP first, then:
+
+# Install certbot
+sudo apt-get install -y certbot python3-certbot-nginx
+
+# Get certificate
+sudo certbot certonly --standalone -d yourdomain.com
+
+# Nginx will auto-use it (see nginx.conf)
+```
+
+---
+
+## Verify It Works
+
+```bash
+# 1. Create account
+API_KEY=$(curl -s -X POST http://localhost:8000/auth/key \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com", "tier": "free"}' | jq -r .api_key)
+
+echo "API Key: $API_KEY"
+
+# 2. Test API
 curl -X POST http://localhost:8000/analyze \
-  -d '{"text": "The cat sat on the mat"}' \
-  -H "Content-Type: application/json"
-```
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{"text": "The cat sat on the mat."}'
 
-Response:
-```json
-{
-  "text": "The cat sat on the mat",
-  "n_words": 6,
-  "spectral_gap": 0.555,
-  "frequency": 6.10,
-  "confidence": 0.634,
-  "eigenvalues": [1.802, 1.247, 0.445],
-  "structure_clarity": "ambiguous"
-}
-```
-
----
-
-## What Each Field Means
-
-- **spectral_gap** (Δλ): Structure clarity. Higher = clearer grammar.
-- **frequency** (Hz): Predicted brain oscillation. Higher = more certainty.
-- **confidence** (0-1): Sigmoid of Δλ. How sure is the model?
-- **eigenvalues**: Top 5 eigenvalues of the dependency graph.
-- **structure_clarity**: "clear" if Δλ > 1.0, else "ambiguous"
-
----
-
-## Next Steps
-
-1. **Experiment**: Modify `examples/basic.py` to test your own sentences
-2. **Integrate**: Use the API in a web app or notebook
-3. **Build**: Add features (visualizations, batch analysis, etc.)
-4. **Blog**: Write about your findings
-5. **Monetize**: Charge for API access
-
----
-
-## Project Structure
-
-```
-spectral-grammar/
-├── spectral_grammar/
-│   ├── __init__.py          # Main entry point
-│   ├── parser.py            # Dependency parsing + eigenvalues
-│   ├── analysis.py          # Results data class
-├── examples/
-│   ├── basic.py             # Simple analysis
-│   ├── garden_path.py       # Ambiguity detection
-├── api.py                   # HTTP server
-├── README.md                # Overview
-├── QUICKSTART.md            # This file
-├── BLOG_POST_TEMPLATE.md    # Content for publishing
-└── requirements.txt         # Dependencies
+# Should return: spectral_gap, frequency, confidence, structure_clarity
 ```
 
 ---
 
 ## Troubleshooting
 
-**spaCy model not found?**
+### Container won't start
 ```bash
-python -m spacy download en_core_web_sm
+docker-compose logs api
+# Check for errors, fix .env, try again
 ```
 
-**Port 8000 already in use?**
-Edit `api.py`, change `port = 8000` to `port = 8001`
-
-**Import errors?**
+### Port 8000 already in use
 ```bash
-pip install -r requirements.txt
+docker-compose down
+# Free the port and retry
+```
+
+### Stripe keys not working
+```bash
+# Make sure you're using LIVE keys (sk_live_, pk_live_)
+# Update .env and restart
+docker-compose restart api
 ```
 
 ---
 
-## Performance
+## What's Next
 
-- **Per-sentence analysis**: ~50-100ms (parsing + eigenvalues)
-- **API latency**: ~150-200ms (parsing + JSON overhead)
-- **Memory**: ~200MB (spaCy model + Python runtime)
+1. **Post-Launch**
+   - Monitor: `docker-compose logs -f api`
+   - Backup DB daily: `cp data/spectral_users.db backups/`
+   - Check Stripe dashboard for payments
 
-For production, consider:
-- Batch API endpoint (multiple sentences at once)
-- Caching results (same sentence = same result)
-- GPU acceleration (if processing thousands/min)
+2. **Marketing**
+   - Publish blog post
+   - Twitter thread
+   - Email neuroscientists
+   - See LAUNCH_CHECKLIST.md for full plan
 
----
-
-## Theory Reference
-
-See: [Spectral Structure of Grammar Predicts EEG Dynamics](https://zenodo.org/record/21404376)
-
-Quick version: f = 5 + 2.5 · log(Δλ + 1)
-
-Where:
-- f = predicted brain frequency (Hz)
-- Δλ = spectral gap of parse tree (eigenvalue difference)
+3. **Scaling**
+   - If traffic > 100 req/sec, increase workers
+   - Edit Dockerfile: change `--workers 4` to `--workers 8`
+   - Rebuild: `docker-compose up -d --build`
 
 ---
 
-## Questions?
+## Support
 
-- Check `README.md` for overview
-- Check `spectral_grammar/parser.py` for implementation details
-- Check `BLOG_POST_TEMPLATE.md` for explaining the theory
+- **Docs**: Read PRODUCTION.md for detailed guide
+- **Issues**: GitHub issues page
+- **Status**: Visit http://yourdomain.com/health
 
+---
+
+You're live! 🚀

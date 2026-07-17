@@ -15,9 +15,10 @@ import hashlib
 import stripe
 import sqlite3
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from functools import wraps
 import logging
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -340,6 +341,21 @@ def status(user):
 def health():
     """Health check."""
     return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()}), 200
+
+
+@app.route('/', methods=['GET'])
+def dashboard():
+    """Serve dashboard."""
+    dashboard_path = os.path.join(os.path.dirname(__file__), 'static', 'dashboard.html')
+    if os.path.exists(dashboard_path):
+        return send_from_directory(os.path.join(os.path.dirname(__file__), 'static'), 'dashboard.html')
+    return jsonify({'message': 'Spectral Grammar API', 'version': '1.0.0'}), 200
+
+
+@app.route('/static/<path:filename>', methods=['GET'])
+def serve_static(filename):
+    """Serve static files."""
+    return send_from_directory(os.path.join(os.path.dirname(__file__), 'static'), filename)
 
 
 if __name__ == '__main__':
